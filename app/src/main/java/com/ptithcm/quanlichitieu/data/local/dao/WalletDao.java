@@ -203,5 +203,24 @@ public class WalletDao {
         Log.d(TAG, "updateFromServer: Updated " + rows + " row(s) for wallet id=" + wallet.getId());
         return rows;
     }
+
+    public List<Wallet> getModifiedAfter(@Nullable String userId, long timestamp) {
+        List<Wallet> list = new ArrayList<>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        String selection = (userId != null)
+                ? WalletEntry.COLUMN_USER_ID + " = ? AND " + WalletEntry.COLUMN_UPDATED_AT + " > ?"
+                : WalletEntry.COLUMN_USER_ID + " IS NULL AND " + WalletEntry.COLUMN_UPDATED_AT + " > ?";
+        String[] selectionArgs = (userId != null)
+                ? new String[]{userId, String.valueOf(timestamp)}
+                : new String[]{String.valueOf(timestamp)};
+        try (Cursor cursor = db.query(WalletEntry.TABLE_NAME, null, selection, selectionArgs, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                do {
+                    list.add(cursorToWallet(cursor));
+                } while (cursor.moveToNext());
+            }
+        }
+        return list;
+    }
 }
 

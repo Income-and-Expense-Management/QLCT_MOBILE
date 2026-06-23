@@ -31,6 +31,8 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * SyncRepository — Chịu trách nhiệm đồng bộ tập trung tất cả thực thể.
@@ -71,15 +73,134 @@ public class SyncRepository {
     }
 
     /**
-     * Thực hiện đồng bộ tất cả thực thể thay đổi từ server.
+     * Thực hiện đồng bộ 2 chiều (push thay đổi cục bộ lên trước, sau đó pull thay đổi từ server về).
      */
     public void syncAll(@Nullable String userId, @Nullable Runnable onDone) {
         String userKey = (userId != null && !userId.trim().isEmpty()) ? userId : "default";
         SharedPreferences prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE);
         String lastSyncTime = prefs.getString("last_sync_time_" + userKey, "0");
 
-        Log.d(TAG, "syncAll: Starting sync for user=" + userKey + ", lastSyncTime=" + lastSyncTime);
+        Log.d(TAG, "syncAll: Starting bidirectional sync for user=" + userKey + ", lastSyncTime=" + lastSyncTime);
 
+        new Thread(() -> {
+            try {
+                long lastSyncTimeMillis = 0L;
+                if (lastSyncTime != null && !lastSyncTime.equals("0")) {
+                    lastSyncTimeMillis = parseIso8601ToMillis(lastSyncTime);
+                }
+
+                // 1. Lấy dữ liệu thay đổi cục bộ
+                List<Wallet> modifiedWallets = walletDao.getModifiedAfter(userId, lastSyncTimeMillis);
+                List<Category> modifiedCategories = categoryDao.getModifiedAfter(userId, lastSyncTimeMillis);
+                List<Transaction> modifiedTransactions = transactionDao.getModifiedAfter(userId, lastSyncTimeMillis);
+                List<Budget> modifiedBudgets = budgetDao.getModifiedAfter(userId, lastSyncTimeMillis);
+
+                boolean hasLocalChanges = !modifiedWallets.isEmpty() || !modifiedCategories.isEmpty() ||
+                        !modifiedTransactions.isEmpty() || !modifiedBudgets.isEmpty();
+
+                if (hasLocalChanges) {
+                    Log.d(TAG, String.format("syncAll: Found local changes - Wallets: %d, Categories: %d, Transactions: %d, Budgets: %d",
+                            modifiedWallets.size(), modifiedCategories.size(), modifiedTransactions.size(), modifiedBudgets.size()));
+
+                    JSONObject payload = new JSONObject();
+                    
+                    // Serialize Wallets
+                    JSONArray walletsArray = new JSONArray();
+                    for (Wallet w : modifiedWallets) {
+                        JSONObject wJson = new JSONObject();
+                        wJson.put("id", w.getId());
+                        wJson.put("user_id", w.getUserId());
+                        wJson.put("name", w.getName());
+                        wJson.put("initial_balance", String.valueOf(w.getInitialBalance()));
+                        wJson.put("currency", w.getCurrency());
+                        wJson.put("icon_id", w.getIconId() == null ? JSONObject.NULL : w.getIconId());
+                        wJson.put("created_at", formatMillisToIso8601(w.getCreatedAt()));
+                        wJson.put("updated_at", formatMillisToIso8601(w.getUpdatedAt()));
+                        wJson.put("deleted_at", w.getDeletedAt() == null ? JSONObject.NULL : formatMillisToIso8601(w.getDeletedAt()));
+                        walletsArray.put(wJson);
+                    }
+                    payload.put("wallets", walletsArray);
+
+                    // Serialize Categories
+                    JSONArray categoriesArray = new JSONArray();
+                    for (Category c : modifiedCategories) {
+                        JSONObject cJson = new JSONObject();
+                        cJson.put("id", c.getId());
+                        cJson.put("user_id", c.getUserId() == null ? JSONObject.NULL : c.getUserId());
+                        cJson.put("name", c.getName());
+                        cJson.put("type", c.getType().getValue().toLowerCase());
+                        cJson.put("icon_name", c.getIconName() == null ? JSONObject.NULL : c.getIconName());
+                        cJson.put("is_active", c.isActive());
+                        cJson.put("created_at", formatMillisToIso8601(c.getCreatedAt()));
+                        cJson.put("updated_at", formatMillisToIso8601(c.getUpdatedAt()));
+                        cJson.put("deleted_at", c.getDeletedAt() == null ? JSONObject.NULL : formatMillisToIso8601(c.getDeletedAt()));
+                        categoriesArray.put(cJson);
+                    }
+                    payload.put("categories", categoriesArray);
+
+                    // Serialize Transactions
+                    JSONArray transactionsArray = new JSONArray();
+                    for (Transaction t : modifiedTransactions) {
+                        JSONObject tJson = new JSONObject();
+                        tJson.put("id", t.getId());
+                        tJson.put("wallet_id", t.getWalletId());
+                        tJson.put("category_id", t.getCategoryId() == null ? JSONObject.NULL : t.getCategoryId());
+                        tJson.put("amount", String.valueOf(t.getAmount()));
+                        tJson.put("transaction_date", formatMillisToIso8601(t.getTransactionDate()));
+                        tJson.put("note", t.getNote() == null ? JSONObject.NULL : t.getNote());
+                        tJson.put("created_at", formatMillisToIso8601(t.getCreatedAt()));
+                        tJson.put("updated_at", formatMillisToIso8601(t.getUpdatedAt()));
+                        tJson.put("deleted_at", t.getDeletedAt() == null ? JSONObject.NULL : formatMillisToIso8601(t.getDeletedAt()));
+                        transactionsArray.put(tJson);
+                    }
+                    payload.put("transactions", transactionsArray);
+
+                    // Serialize Budgets
+                    JSONArray budgetsArray = new JSONArray();
+                    for (Budget b : modifiedBudgets) {
+                        JSONObject bJson = new JSONObject();
+                        bJson.put("id", b.getId());
+                        bJson.put("wallet_id", b.getWalletId());
+                        bJson.put("category_id", b.getCategoryId());
+                        bJson.put("target_amount", String.valueOf(b.getTargetAmount()));
+                        bJson.put("start_date", b.getStartDate() == 0 ? JSONObject.NULL : formatMillisToIso8601(b.getStartDate()));
+                        bJson.put("end_date", b.getEndDate() == 0 ? JSONObject.NULL : formatMillisToIso8601(b.getEndDate()));
+                        bJson.put("created_at", formatMillisToIso8601(b.getCreatedAt()));
+                        bJson.put("updated_at", formatMillisToIso8601(b.getUpdatedAt()));
+                        bJson.put("deleted_at", b.getDeletedAt() == null ? JSONObject.NULL : formatMillisToIso8601(b.getDeletedAt()));
+                        budgetsArray.put(bJson);
+                    }
+                    payload.put("budgets", budgetsArray);
+
+                    apiService.pushSyncUpdates(
+                            payload,
+                            response -> {
+                                Log.d(TAG, "syncAll: Push successful, moving to pull");
+                                pullSyncUpdates(userId, userKey, prefs, onDone);
+                            },
+                            error -> {
+                                Log.e(TAG, "syncAll: Push failed -> " + error.getMessage());
+                                if (onDone != null) {
+                                    onDone.run();
+                                }
+                            }
+                    );
+                } else {
+                    Log.d(TAG, "syncAll: No local changes, moving directly to pull");
+                    pullSyncUpdates(userId, userKey, prefs, onDone);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "syncAll: Error during database query or serialization", e);
+                if (onDone != null) {
+                    onDone.run();
+                }
+            }
+        }).start();
+    }
+
+    private void pullSyncUpdates(@Nullable String userId, String userKey, SharedPreferences prefs, @Nullable Runnable onDone) {
+        String lastSyncTime = prefs.getString("last_sync_time_" + userKey, "0");
+        Log.d(TAG, "pullSyncUpdates: Fetching updates since " + lastSyncTime);
         apiService.fetchSyncUpdates(
                 lastSyncTime,
                 response -> {
@@ -116,12 +237,12 @@ public class SyncRepository {
                                     String serverSyncTime = data.optString("server_sync_time", null);
                                     if (serverSyncTime != null && !serverSyncTime.isEmpty()) {
                                         prefs.edit().putString("last_sync_time_" + userKey, serverSyncTime).apply();
-                                        Log.d(TAG, "syncAll: Saved new last_sync_time=" + serverSyncTime);
+                                        Log.d(TAG, "pullSyncUpdates: Saved new last_sync_time=" + serverSyncTime);
                                     }
                                 }
                             }
                         } catch (Exception e) {
-                            Log.e(TAG, "syncAll: Processing error", e);
+                            Log.e(TAG, "pullSyncUpdates: Processing error", e);
                         } finally {
                             if (onDone != null) {
                                 onDone.run();
@@ -130,12 +251,18 @@ public class SyncRepository {
                     }).start();
                 },
                 error -> {
-                    Log.e(TAG, "syncAll: Volley error -> " + error.getMessage());
+                    Log.e(TAG, "pullSyncUpdates: Volley error -> " + error.getMessage());
                     if (onDone != null) {
                         onDone.run();
                     }
                 }
         );
+    }
+
+    private String formatMillisToIso8601(long millis) {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return sdf.format(new java.util.Date(millis));
     }
 
     private void upsertWallets(JSONArray array, String userId) throws JSONException {

@@ -49,4 +49,27 @@ public class SyncApiService {
         );
         volleySingleton.addToRequestQueue(request);
     }
+
+    /**
+     * Đẩy toàn bộ bản ghi có thay đổi cục bộ lên server.
+     */
+    public void pushSyncUpdates(
+            @NonNull JSONObject payload,
+            @NonNull Response.Listener<JSONObject> onSuccess,
+            @NonNull Response.ErrorListener onError
+    ) {
+        String url = ApiConfig.SYNC_PUSH_URL;
+        Log.d(TAG, "pushSyncUpdates: POST " + url);
+
+        AuthJsonObjectRequest request = new AuthJsonObjectRequest(
+                Request.Method.POST,
+                url,
+                payload,
+                onSuccess,
+                onError,
+                tokenStorage,
+                null
+        );
+        volleySingleton.addToRequestQueue(request);
+    }
 }

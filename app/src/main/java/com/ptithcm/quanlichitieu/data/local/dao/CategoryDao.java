@@ -249,6 +249,25 @@ public class CategoryDao {
         return db.update(CategoryEntry.TABLE_NAME, values, CategoryEntry.COLUMN_ID + " = ? AND " + CategoryEntry.COLUMN_USER_ID + " IS NOT NULL", new String[]{categoryId});
     }
 
+    public List<Category> getModifiedAfter(@Nullable String userId, long timestamp) {
+        List<Category> list = new ArrayList<>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        String selection = (userId != null)
+                ? CategoryEntry.COLUMN_USER_ID + " = ? AND " + CategoryEntry.COLUMN_UPDATED_AT + " > ?"
+                : CategoryEntry.COLUMN_USER_ID + " IS NULL AND " + CategoryEntry.COLUMN_UPDATED_AT + " > ?";
+        String[] selectionArgs = (userId != null)
+                ? new String[]{userId, String.valueOf(timestamp)}
+                : new String[]{String.valueOf(timestamp)};
+        try (Cursor cursor = db.query(CategoryEntry.TABLE_NAME, null, selection, selectionArgs, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                do {
+                    list.add(cursorToCategory(cursor));
+                } while (cursor.moveToNext());
+            }
+        }
+        return list;
+    }
+
     private Category cursorToCategory(Cursor cursor) {
         String typeString = CursorUtils.getString(cursor, CategoryEntry.COLUMN_TYPE);
         TransactionType type = TransactionType.fromValue(typeString);

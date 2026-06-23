@@ -10,6 +10,7 @@ import androidx.annotation.Nullable;
 
 import com.ptithcm.quanlichitieu.data.local.BudgetDatabaseHelper;
 import com.ptithcm.quanlichitieu.data.local.contract.DatabaseContract.BudgetEntry;
+import com.ptithcm.quanlichitieu.data.local.contract.DatabaseContract.WalletEntry;
 import com.ptithcm.quanlichitieu.data.local.util.CursorUtils;
 import com.ptithcm.quanlichitieu.utils.IdGenerator;
 import com.ptithcm.quanlichitieu.data.model.Budget;
@@ -267,6 +268,7 @@ public class BudgetDao {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(BudgetEntry.COLUMN_DELETED_AT, IdGenerator.getCurrentTimestamp());
+        values.put(BudgetEntry.COLUMN_UPDATED_AT, IdGenerator.getCurrentTimestamp());
         return db.update(BudgetEntry.TABLE_NAME, values, BudgetEntry.COLUMN_ID + " = ?", new String[]{budgetId});
     }
 
@@ -274,7 +276,36 @@ public class BudgetDao {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(BudgetEntry.COLUMN_DELETED_AT, IdGenerator.getCurrentTimestamp());
+        values.put(BudgetEntry.COLUMN_UPDATED_AT, IdGenerator.getCurrentTimestamp());
         return db.update(BudgetEntry.TABLE_NAME, values, BudgetEntry.COLUMN_WALLET_ID + " = ?", new String[]{walletId});
+    }
+
+    public List<Budget> getModifiedAfter(@Nullable String userId, long timestamp) {
+        List<Budget> list = new ArrayList<>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        
+        String query;
+        String[] args;
+        if (userId != null) {
+            query = "SELECT b.* FROM " + BudgetEntry.TABLE_NAME + " b " +
+                    "INNER JOIN wallets w ON b." + BudgetEntry.COLUMN_WALLET_ID + " = w.id " +
+                    "WHERE w." + WalletEntry.COLUMN_USER_ID + " = ? AND b." + BudgetEntry.COLUMN_UPDATED_AT + " > ?";
+            args = new String[]{userId, String.valueOf(timestamp)};
+        } else {
+            query = "SELECT b.* FROM " + BudgetEntry.TABLE_NAME + " b " +
+                    "INNER JOIN wallets w ON b." + BudgetEntry.COLUMN_WALLET_ID + " = w.id " +
+                    "WHERE w." + WalletEntry.COLUMN_USER_ID + " IS NULL AND b." + BudgetEntry.COLUMN_UPDATED_AT + " > ?";
+            args = new String[]{String.valueOf(timestamp)};
+        }
+        
+        try (Cursor cursor = db.rawQuery(query, args)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                do {
+                    list.add(cursorToBudget(cursor));
+                } while (cursor.moveToNext());
+            }
+        }
+        return list;
     }
 
     private Budget cursorToBudget(Cursor cursor) {

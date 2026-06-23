@@ -383,6 +383,34 @@ public class TransactionDao {
         return count;
     }
 
+    public List<Transaction> getModifiedAfter(@Nullable String userId, long timestamp) {
+        List<Transaction> list = new ArrayList<>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        
+        String query;
+        String[] args;
+        if (userId != null) {
+            query = "SELECT t.* FROM " + TransactionEntry.TABLE_NAME + " t " +
+                    "INNER JOIN wallets w ON t." + TransactionEntry.COLUMN_WALLET_ID + " = w.id " +
+                    "WHERE w." + WalletEntry.COLUMN_USER_ID + " = ? AND t." + TransactionEntry.COLUMN_UPDATED_AT + " > ?";
+            args = new String[]{userId, String.valueOf(timestamp)};
+        } else {
+            query = "SELECT t.* FROM " + TransactionEntry.TABLE_NAME + " t " +
+                    "INNER JOIN wallets w ON t." + TransactionEntry.COLUMN_WALLET_ID + " = w.id " +
+                    "WHERE w." + WalletEntry.COLUMN_USER_ID + " IS NULL AND t." + TransactionEntry.COLUMN_UPDATED_AT + " > ?";
+            args = new String[]{String.valueOf(timestamp)};
+        }
+        
+        try (Cursor cursor = db.rawQuery(query, args)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                do {
+                    list.add(cursorToTransaction(cursor));
+                } while (cursor.moveToNext());
+            }
+        }
+        return list;
+    }
+
     private Transaction cursorToTransactionWithDetails(Cursor cursor) {
         String typeString = CursorUtils.getString(cursor, "category_type");
         TransactionType type = typeString != null ? TransactionType.fromValue(typeString) : TransactionType.EXPENSE;
