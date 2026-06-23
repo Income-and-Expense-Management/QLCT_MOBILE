@@ -6,8 +6,11 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import android.content.SharedPreferences;
+
 import com.android.volley.Request;
 import com.android.volley.VolleyError;
+import com.ptithcm.quanlichitieu.data.local.DatabaseManager;
 import com.ptithcm.quanlichitieu.data.local.token.TokenStorage;
 import com.ptithcm.quanlichitieu.data.remote.ApiConfig;
 import com.ptithcm.quanlichitieu.data.remote.AuthJsonObjectRequest;
@@ -35,6 +38,7 @@ import java.io.UnsupportedEncodingException;
 public class AuthRepositoryImpl implements AuthRepository {
 
     private static final String TAG = "AuthRepositoryImpl";
+    private final Context context;
     private final VolleySingleton volleySingleton;
     private final TokenStorage tokenStorage;
 
@@ -42,6 +46,7 @@ public class AuthRepositoryImpl implements AuthRepository {
     private AuthJsonObjectRequest.SessionExpiredListener sessionExpiredListener;
 
     public AuthRepositoryImpl(Context context, TokenStorage tokenStorage) {
+        this.context = context.getApplicationContext();
         this.volleySingleton = VolleySingleton.getInstance(context);
         this.tokenStorage = tokenStorage;
     }
@@ -52,7 +57,13 @@ public class AuthRepositoryImpl implements AuthRepository {
      */
     public void setSessionExpiredListener(
             @Nullable AuthJsonObjectRequest.SessionExpiredListener listener) {
-        this.sessionExpiredListener = listener;
+        this.sessionExpiredListener = () -> {
+            Log.w(TAG, "Session expired detected in Repository — clearing local data");
+            clearLocalData();
+            if (listener != null) {
+                listener.onSessionExpired();
+            }
+        };
     }
 
     @Override
@@ -163,12 +174,12 @@ public class AuthRepositoryImpl implements AuthRepository {
                 null,
                 response -> {
                     Log.d(TAG, "logout: Server confirmed logout, clearing all auth data");
-                    tokenStorage.clearAll();
+                    clearLocalData();
                     callback.onSuccess(null);
                 },
                 error -> {
                     Log.w(TAG, "logout: Server error, clearing auth data locally anyway", error);
-                    tokenStorage.clearAll();
+                    clearLocalData();
                     callback.onSuccess(null);
                 },
                 tokenStorage,
@@ -176,6 +187,29 @@ public class AuthRepositoryImpl implements AuthRepository {
         );
 
         volleySingleton.addToRequestQueue(request);
+    }
+
+    @Override
+    public void clearLocalData() {
+        Log.d(TAG, "clearLocalData: Clearing all local auth, database, and sync time data");
+        // 1. Clear tokens & user info from EncryptedSharedPreferences
+        tokenStorage.clearAll();
+
+        // 2. Clear all database tables
+        try {
+            DatabaseManager.getInstance(context).clearAllTables();
+        } catch (Exception e) {
+            Log.e(TAG, "clearLocalData: Error clearing database", e);
+        }
+
+        // 3. Clear all sync times & active wallets from app_prefs
+        try {
+            SharedPreferences prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE);
+            prefs.edit().clear().apply();
+            Log.d(TAG, "clearLocalData: Cleared all app_prefs preferences");
+        } catch (Exception e) {
+            Log.e(TAG, "clearLocalData: Error clearing app_prefs", e);
+        }
     }
 
     @Override

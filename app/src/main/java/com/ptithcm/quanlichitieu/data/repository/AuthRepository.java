@@ -31,6 +31,8 @@ public interface AuthRepository {
 
     void logout(@NonNull AuthCallback<Void> callback);
 
+    void clearLocalData();
+
     boolean isLoggedIn();
 
     String getUserId();

@@ -4,6 +4,11 @@ import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
 
+import com.ptithcm.quanlichitieu.data.local.contract.DatabaseContract.BudgetEntry;
+import com.ptithcm.quanlichitieu.data.local.contract.DatabaseContract.CategoryEntry;
+import com.ptithcm.quanlichitieu.data.local.contract.DatabaseContract.TransactionEntry;
+import com.ptithcm.quanlichitieu.data.local.contract.DatabaseContract.UserEntry;
+import com.ptithcm.quanlichitieu.data.local.contract.DatabaseContract.WalletEntry;
 import com.ptithcm.quanlichitieu.data.local.dao.BudgetDao;
 import com.ptithcm.quanlichitieu.data.local.dao.CategoryDao;
 import com.ptithcm.quanlichitieu.data.local.dao.TransactionDao;
@@ -255,6 +260,30 @@ public class DatabaseManager {
      */
     public SQLiteDatabase getReadableDatabase() {
         return dbHelper.getReadableDatabase();
+    }
+
+    /**
+     * Xóa sạch dữ liệu trong tất cả các bảng (wallets, categories, transactions, budgets, users).
+     * Sử dụng khi người dùng đăng xuất hoặc khi cần reset dữ liệu để đồng bộ lại từ đầu.
+     */
+    public void clearAllTables() {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.execSQL("PRAGMA foreign_keys = OFF");
+            db.execSQL("DELETE FROM " + BudgetEntry.TABLE_NAME);
+            db.execSQL("DELETE FROM " + TransactionEntry.TABLE_NAME);
+            db.execSQL("DELETE FROM " + CategoryEntry.TABLE_NAME);
+            db.execSQL("DELETE FROM " + WalletEntry.TABLE_NAME);
+            db.execSQL("DELETE FROM " + UserEntry.TABLE_NAME);
+            db.execSQL("PRAGMA foreign_keys = ON");
+            db.setTransactionSuccessful();
+            Log.d(TAG, "clearAllTables: All tables cleared successfully");
+        } catch (Exception e) {
+            Log.e(TAG, "clearAllTables: Error clearing database tables", e);
+        } finally {
+            db.endTransaction();
+        }
     }
 
     /**

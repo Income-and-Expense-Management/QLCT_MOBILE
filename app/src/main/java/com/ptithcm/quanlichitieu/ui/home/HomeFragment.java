@@ -88,6 +88,7 @@ public class HomeFragment extends Fragment {
         homeViewModel.setUsername(username);
         
         walletViewModel.loadActiveWallet();
+        walletViewModel.refreshFromServer();
     }
 
     private void observeEvents() {
