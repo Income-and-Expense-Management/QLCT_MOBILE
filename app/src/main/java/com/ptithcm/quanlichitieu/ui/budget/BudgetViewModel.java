@@ -108,7 +108,7 @@ public class BudgetViewModel extends AndroidViewModel {
         List<Wallet> walletList = repository.getWalletsForUser(currentUserId);
         wallets.setValue(walletList);
 
-        if (selectedWallet.getValue() == null && walletList != null && !walletList.isEmpty()) {
+        if (walletList != null && !walletList.isEmpty()) {
             SharedPreferences prefs = getApplication().getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE);
             // Chuẩn hóa key nhất quán với WalletViewModel và AddTransactionViewModel:
             // "active_wallet_id_" + userId (hoặc "default" khi chưa đăng nhập)
@@ -127,7 +127,14 @@ public class BudgetViewModel extends AndroidViewModel {
             if (activeWallet == null) {
                 activeWallet = walletList.get(0);
             }
-            selectWallet(activeWallet);
+
+            Wallet currentSelected = selectedWallet.getValue();
+            if (currentSelected == null || !currentSelected.getId().equals(activeWallet.getId())) {
+                selectWallet(activeWallet);
+            } else {
+                selectedWallet.setValue(activeWallet);
+                refresh();
+            }
         }
     }
 

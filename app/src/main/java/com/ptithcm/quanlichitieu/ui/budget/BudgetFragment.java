@@ -277,4 +277,12 @@ public class BudgetFragment extends Fragment {
         super.onResume();
         viewModel.refresh();
     }
+
+    @Override
+    public void onHiddenChanged(boolean hidden) {
+        super.onHiddenChanged(hidden);
+        if (!hidden) {
+            viewModel.loadWallets();
+        }
+    }
 }

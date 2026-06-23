@@ -157,10 +157,8 @@ public class HomeFragment extends Fragment {
         swipeRefreshLayout.setColorSchemeResources(R.color.home_expense_red, R.color.home_accent_green);
         updateSyncTime();
         swipeRefreshLayout.setOnRefreshListener(() -> {
-            // FIX: Gọi refreshFromServer để thực sự kéo dữ liệu từ server về (xử lý đồng bộ xóa)
+            // Chỉ cần kích hoạt refresh từ server qua WalletViewModel
             walletViewModel.refreshFromServer();
-            homeViewModel.loadTopExpenses();
-            homeViewModel.loadReportData();
         });
     }
 
@@ -233,6 +231,7 @@ public class HomeFragment extends Fragment {
                 swipeRefreshLayout.setRefreshing(refreshing != null && refreshing);
                 if (refreshing != null && !refreshing) {
                     updateSyncTime();
+                    homeViewModel.refreshDashboard(); // Refresh UI after background sync completes
                 }
             }
         });
@@ -309,5 +308,15 @@ public class HomeFragment extends Fragment {
         walletViewModel.loadActiveWallet();
         homeViewModel.loadReportData();
         homeViewModel.calculateCurrentBalance(walletViewModel.getSelectedWallet().getValue());
+    }
+
+    @Override
+    public void onHiddenChanged(boolean hidden) {
+        super.onHiddenChanged(hidden);
+        if (!hidden) {
+            walletViewModel.loadActiveWallet();
+            homeViewModel.loadReportData();
+            homeViewModel.calculateCurrentBalance(walletViewModel.getSelectedWallet().getValue());
+        }
     }
 }
